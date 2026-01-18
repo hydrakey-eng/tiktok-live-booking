@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,7 +10,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Remix Icon -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <!-- Toastify CSS -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 </head>
+
 <body>
     <div class="app-container">
         <aside class="sidebar">
@@ -17,7 +21,7 @@
                 <i class="ri-live-line"></i>
                 <span>LiveBook</span>
             </div>
-            
+
             <nav class="nav-menu">
                 <div class="nav-label">Portals</div>
                 <button class="nav-item active" data-view="staff" onclick="switchView('staff')">
@@ -46,7 +50,7 @@
                     <h1>Book a Session</h1>
                     <p>Schedule your next TikTok Live performance.</p>
                 </header>
-                
+
                 <div class="content-grid">
                     <div class="card booking-form-card">
                         <h2>New Booking</h2>
@@ -83,7 +87,7 @@
                         <div class="bookings-list" id="staffBookingsList">
                             <!-- Populated by JS -->
                             <div class="empty-state">
-                                <p>No bookings found.</p>
+                                <p>Loading bookings...</p>
                             </div>
                         </div>
                     </div>
@@ -118,6 +122,14 @@
                             <h3>Total Sales</h3>
                             <span id="statSales">$0</span>
                         </div>
+                    </div>
+                </div>
+
+                <!-- NEW: Analytics Chart Section -->
+                <div class="card chart-card" style="margin-bottom: 2rem;">
+                    <h2>Sales Analytics (Last 7 Days)</h2>
+                    <div style="height: 300px;">
+                        <canvas id="salesChart"></canvas>
                     </div>
                 </div>
 
@@ -163,6 +175,16 @@
         </div>
     </div>
 
+    <!-- LIBRARIES -->
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Firebase SDK (Version 9+ Modular) -->
+    <!-- Using Compat version for simpler simple script tag usage without bundler complexity if preferred, 
+         but here we use the specific modular imports via ES modules in script.js OR unified compat for ease -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
     <script src="script.js"></script>
 </body>
+
 </html>
