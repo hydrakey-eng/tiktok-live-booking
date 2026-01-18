@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Live Booking System</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Remix Icon -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="ri-live-line"></i>
+                <span>LiveBook</span>
+            </div>
+            
+            <nav class="nav-menu">
+                <div class="nav-label">Portals</div>
+                <button class="nav-item active" data-view="staff" onclick="switchView('staff')">
+                    <i class="ri-user-smile-line"></i>
+                    <span>Staff Portal</span>
+                </button>
+                <button class="nav-item" data-view="manager" onclick="switchView('manager')">
+                    <i class="ri-shield-check-line"></i>
+                    <span>Manager Portal</span>
+                </button>
+            </nav>
+
+            <div class="user-profile">
+                <div class="avatar">S</div>
+                <div class="user-info">
+                    <p class="name">Staff Member</p>
+                    <p class="role">Online</p>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <!-- STAFF VIEW -->
+            <section id="staff-view" class="view-section active">
+                <header class="section-header">
+                    <h1>Book a Session</h1>
+                    <p>Schedule your next TikTok Live performance.</p>
+                </header>
+                
+                <div class="content-grid">
+                    <div class="card booking-form-card">
+                        <h2>New Booking</h2>
+                        <form id="bookingForm">
+                            <div class="form-group">
+                                <label>Date</label>
+                                <input type="date" id="bookingDate" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Time Slot</label>
+                                <select id="bookingTime" required>
+                                    <option value="">Select a time</option>
+                                    <option value="09:00">09:00 - 11:00</option>
+                                    <option value="11:00">11:00 - 13:00</option>
+                                    <option value="13:00">13:00 - 15:00</option>
+                                    <option value="15:00">15:00 - 17:00</option>
+                                    <option value="17:00">17:00 - 19:00</option>
+                                    <option value="19:00">19:00 - 21:00</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Stream Title / Topic</label>
+                                <input type="text" id="bookingTitle" placeholder="e.g. Summer Sale Special" required>
+                            </div>
+                            <button type="submit" class="btn-primary">
+                                <i class="ri-calendar-check-line"></i>
+                                Request Booking
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="card my-bookings-card">
+                        <h2>My Bookings</h2>
+                        <div class="bookings-list" id="staffBookingsList">
+                            <!-- Populated by JS -->
+                            <div class="empty-state">
+                                <p>No bookings found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- MANAGER VIEW -->
+            <section id="manager-view" class="view-section" style="display: none;">
+                <header class="section-header">
+                    <h1>Manager Dashboard</h1>
+                    <p>Review requests and monitor schedule.</p>
+                </header>
+
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <div class="icon-box info"><i class="ri-time-line"></i></div>
+                        <div class="stat-info">
+                            <h3>Pending</h3>
+                            <span id="statPending">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="icon-box success"><i class="ri-check-double-line"></i></div>
+                        <div class="stat-info">
+                            <h3>Approved</h3>
+                            <span id="statApproved">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="icon-box warning"><i class="ri-money-dollar-circle-line"></i></div>
+                        <div class="stat-info">
+                            <h3>Total Sales</h3>
+                            <span id="statSales">$0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="content-grid">
+                    <div class="card requests-card">
+                        <h2>Pending Requests</h2>
+                        <div class="requests-list" id="pendingRequestsList">
+                            <!-- Populated by JS -->
+                            <div class="empty-state">
+                                <p>No pending requests.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card calendar-card">
+                        <h2>Approved Schedule</h2>
+                        <div class="calendar-list" id="approvedCalendarList">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal for Post-Stream Report -->
+    <div id="reportModal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeReportModal()">&times;</span>
+            <h2>Post-Stream Report</h2>
+            <form id="reportForm">
+                <input type="hidden" id="reportBookingId">
+                <div class="form-group">
+                    <label>Actual Viewers</label>
+                    <input type="number" id="actualViewers" placeholder="0" required>
+                </div>
+                <div class="form-group">
+                    <label>Sales Generated ($)</label>
+                    <input type="number" id="salesAmount" placeholder="0.00" step="0.01" required>
+                </div>
+                <button type="submit" class="btn-primary">Submit Report</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
