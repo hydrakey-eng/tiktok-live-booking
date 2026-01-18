@@ -1,8 +1,5 @@
 // --- FIREBASE CONFIGURATION ---
-// TODO: Replace with your own project config from Firebase Console -> Project Settings
-// 1. Go to firebase.google.com -> Create Project
-// 2. Add Web App -> Copy keys here
-// 3. Enable Firestore Database in "Test Mode"
+// TODO: Replace with your own project config
 const firebaseConfig = {
     apiKey: "AIzaSyD-YOUR-API-KEY-HERE",
     authDomain: "your-project.firebaseapp.com",
@@ -15,437 +12,425 @@ const firebaseConfig = {
 // Initialize Firebase
 try {
     firebase.initializeApp(firebaseConfig);
-    console.log("Firebase Initialized");
 } catch (e) {
-    console.error("Firebase init failed (expected if keys are missing):", e);
+    console.error("Firebase init failed:", e);
 }
 
 const db = firebase.firestore();
-const COLLECTION_NAME = 'bookings';
+const COLL_BOOKINGS = 'bookings';
+const COLL_USERS = 'users'; // New collection for users
 
 // --- STATE MANAGEMENT ---
 let allBookings = [];
+let allUsers = [];
 let salesChartInstance = null;
-let currentView = 'staff';
+let currentUser = null; // { username, role, name, id }
 
-// --- UTILS ---
-function formatDate(dateStr) {
-    return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-}
+// --- AUTH UTILS ---
+function initData() {
+    // Check Config
+    const isMock = firebaseConfig.projectId === "your-project-id";
 
-// Notifications
-function showToast(msg, type = 'info') {
-    let bg = "#3b82f6"; // info blue
-    if (type === 'success') bg = "linear-gradient(to right, #00b09b, #96c93d)";
-    if (type === 'error') bg = "linear-gradient(to right, #ff5f6d, #ffc371)";
-    if (type === 'warning') bg = "#f59e0b";
+    // Listen to Bookings
+    if (!isMock) {
+        db.collection(COLL_BOOKINGS).onSnapshot(snap => {
+            allBookings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            updateUI();
+        });
+        db.collection(COLL_USERS).onSnapshot(snap => {
+            allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // If current user is deleted, logout? (Skip for now)
+            updateUI();
+        });
+    } else {
+        // Mock
+        allBookings = JSON.parse(localStorage.getItem('tiktok_bookings_v3') || '[]');
+        allUsers = JSON.parse(localStorage.getItem('tiktok_users_v3') || '[]');
 
-    Toastify({
-        text: msg,
-        duration: 3000,
-        close: true,
-        gravity: "top", // `top` or `bottom`
-        position: "right", // `left`, `center` or `right`
-        backgroundColor: bg,
-        stopOnFocus: true,
-    }).showToast();
-}
-
-// Check for Firebase Connection (Simple Mock if Config is Placeholder)
-function isConfigured() {
-    return firebaseConfig.projectId !== "your-project-id";
-}
-
-// --- REAL-TIME DATA LISTENER ---
-function initRealtimeListener() {
-    if (!isConfigured()) {
-        showToast("⚠️ Firebase Config Missing! Using local mock mode.", "warning");
-        // Fallback to localStorage logic for demo purposes if user hasn't configured key yet
-        allBookings = JSON.parse(localStorage.getItem('tiktok_live_bookings') || '[]');
+        // Seed Admin if empty
+        if (allUsers.length === 0) {
+            allUsers.push({
+                username: 'admin',
+                password: 'admin123', // In real app, hash this!
+                role: 'manager',
+                name: 'Admin User',
+                id: 'admin_1'
+            });
+            localStorage.setItem('tiktok_users_v3', JSON.stringify(allUsers));
+        }
         updateUI();
+    }
+}
+
+// LOGIN
+document.getElementById('loginForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const u = document.getElementById('loginUsername').value;
+    const p = document.getElementById('loginPassword').value;
+
+    const user = allUsers.find(user => user.username === u && user.password === p);
+
+    if (user) {
+        currentUser = user;
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('app-main').style.display = 'flex';
+
+        // Setup User Profile in Sidebar
+        document.getElementById('currentUserName').textContent = user.name;
+        document.getElementById('currentUserRole').textContent = user.role;
+        document.getElementById('currentUserAvatar').textContent = user.name[0];
+
+        // Build Sidebar
+        renderSidebar();
+
+        // Default View
+        if (user.role === 'manager') switchView('manager');
+        else switchView('staff');
+
+        showToast(`Welcome, ${user.name}!`, "success");
+    } else {
+        showToast("Invalid Credentials", "error");
+    }
+});
+
+function logout() {
+    currentUser = null;
+    document.getElementById('app-main').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('loginForm').reset();
+    showToast("Logged Out");
+}
+
+function renderSidebar() {
+    const nav = document.getElementById('navMenu');
+    nav.innerHTML = '<div class="nav-label">Menu</div>';
+
+    if (currentUser.role === 'staff') {
+        nav.innerHTML += `
+            <button class="nav-item active" onclick="switchView('staff')">
+                <i class="ri-calendar-check-line"></i> <span>My Bookings</span>
+            </button>
+        `;
+    } else {
+        nav.innerHTML += `
+            <button class="nav-item" onclick="switchView('manager')">
+                <i class="ri-dashboard-line"></i> <span>Dashboard</span>
+            </button>
+            <button class="nav-item" onclick="switchView('team')">
+                <i class="ri-team-line"></i> <span>Team</span>
+            </button>
+        `;
+    }
+}
+
+// CREATE USER (Manager Only)
+document.getElementById('addUserForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (currentUser.role !== 'manager') return;
+
+    const name = document.getElementById('newUserName').value;
+    const username = document.getElementById('newUserUsername').value;
+    const password = document.getElementById('newUserPassword').value;
+    const role = document.getElementById('newUserRole').value;
+
+    // Check unique
+    if (allUsers.some(u => u.username === username)) {
+        showToast("Username already exists", "error");
         return;
     }
 
-    // Subscribe to Firestore updates
-    db.collection(COLLECTION_NAME).onSnapshot((snapshot) => {
-        const bookings = [];
-        snapshot.forEach((doc) => {
-            bookings.push({ id: doc.id, ...doc.data() });
-        });
-        allBookings = bookings;
-        updateUI();
-    }, (error) => {
-        console.error("Firestore Error:", error);
-        showToast("Error syncing data: " + error.message, "error");
-    });
-}
+    const newUser = { name, username, password, role };
 
-// --- CORE ACTIONS (Supports both Firestore & Local Fallback) ---
-
-async function addBooking(bookingData) {
-    if (isConfigured()) {
-        try {
-            await db.collection(COLLECTION_NAME).add(bookingData);
-            showToast("Booking requested successfully!", "success");
-        } catch (e) {
-            showToast("Failed to request booking.", "error");
-            console.error(e);
-        }
+    const isMock = firebaseConfig.projectId === "your-project-id";
+    if (!isMock) {
+        await db.collection(COLL_USERS).add(newUser);
     } else {
-        // Fallback
-        bookingData.id = Date.now().toString();
-        allBookings.push(bookingData);
-        localStorage.setItem('tiktok_live_bookings', JSON.stringify(allBookings));
-        updateUI();
-        showToast("Booking requested (Local Mode)", "success");
-    }
-}
-
-async function updateBookingStatus(id, status) {
-    if (isConfigured()) {
-        try {
-            await db.collection(COLLECTION_NAME).doc(id).update({ status: status });
-            showToast(`Booking ${status.toLowerCase()}`, "success");
-        } catch (e) {
-            showToast("Update failed", "error");
-        }
-    } else {
-        // Fallback
-        const idx = allBookings.findIndex(b => b.id === id);
-        if (idx !== -1) {
-            allBookings[idx].status = status;
-            localStorage.setItem('tiktok_live_bookings', JSON.stringify(allBookings));
-            updateUI();
-            showToast(`Booking ${status.toLowerCase()} (Local)`, "success");
-        }
-    }
-}
-
-async function updateBookingStats(id, viewers, sales) {
-    const data = {
-        actualViewers: viewers,
-        salesAmount: sales
-    };
-
-    if (isConfigured()) {
-        try {
-            await db.collection(COLLECTION_NAME).doc(id).update(data);
-            showToast("Stats reported successfully!", "success");
-        } catch (e) {
-            showToast("Failed to report stats", "error");
-        }
-    } else {
-        // Fallback
-        const idx = allBookings.findIndex(b => b.id === id);
-        if (idx !== -1) {
-            allBookings[idx].actualViewers = viewers;
-            allBookings[idx].salesAmount = sales;
-            localStorage.setItem('tiktok_live_bookings', JSON.stringify(allBookings));
-            updateUI();
-            showToast("Stats reported (Local)", "success");
-        }
-    }
-}
-
-// --- UI LOGIC ---
-
-// View Switching
-function switchView(viewName) {
-    // Update Sidebar
-    document.querySelectorAll('.nav-item').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.view === viewName) btn.classList.add('active');
-    });
-
-    // Update Main Content
-    document.querySelectorAll('.view-section').forEach(section => {
-        section.style.display = 'none';
-        section.classList.remove('active');
-    });
-
-    const activeSection = document.getElementById(`${viewName}-view`);
-    activeSection.style.display = 'block';
-
-    setTimeout(() => {
-        activeSection.classList.add('active');
-    }, 10);
-
-    // Profile Text
-    const userRole = document.querySelector('.user-info .role');
-    const userName = document.querySelector('.user-info .name');
-    if (viewName === 'staff') {
-        userRole.textContent = 'Staff';
-        userName.textContent = 'Staff Member';
-    } else {
-        userRole.textContent = 'Manager';
-        userName.textContent = 'Admin User';
+        newUser.id = Date.now().toString();
+        allUsers.push(newUser);
+        localStorage.setItem('tiktok_users_v3', JSON.stringify(allUsers));
+        updateUI(); // Trigger UI update for Team List
     }
 
-    currentView = viewName;
-    updateUI();
+    e.target.reset();
+    showToast("User created successfully", "success");
+});
 
-    // Resize chart if needed
-    if (viewName === 'manager' && salesChartInstance) {
-        salesChartInstance.resize();
-    }
-}
+// --- BOOKING LOGIC ---
 
-// Staff: Submit Booking
-document.getElementById('bookingForm').addEventListener('submit', (e) => {
+// Add Booking (Updated for Room)
+document.getElementById('bookingForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    const room = document.getElementById('bookingRoom').value;
     const date = document.getElementById('bookingDate').value;
     const time = document.getElementById('bookingTime').value;
     const title = document.getElementById('bookingTitle').value;
 
-    if (!date || !time || !title) return;
-
-    // Overlap Check
+    // Overlap Check: Date + Time + Room
     const isOverlap = allBookings.some(b =>
         b.date === date &&
         b.time === time &&
+        b.room === room &&
         b.status !== 'REJECTED'
     );
 
     if (isOverlap) {
-        showToast('This time slot is already booked!', 'error');
+        showToast(`'${room}' is already booked at this time!`, 'error');
         return;
     }
 
     const newBooking = {
-        staffName: 'Staff Member', // Mock user
-        title: title,
+        staffName: currentUser.name,
+        staffId: currentUser.id,
+        room,
         date,
         time,
+        title,
         status: 'PENDING',
         actualViewers: null,
         salesAmount: null,
         createdAt: new Date().toISOString()
     };
 
-    addBooking(newBooking);
+    const isMock = firebaseConfig.projectId === "your-project-id";
+    if (!isMock) {
+        await db.collection(COLL_BOOKINGS).add(newBooking);
+    } else {
+        newBooking.id = Date.now().toString();
+        allBookings.push(newBooking);
+        localStorage.setItem('tiktok_bookings_v3', JSON.stringify(allBookings));
+        updateUI();
+    }
+
     e.target.reset();
+    showToast("Booking requested!", "success");
 });
 
-// Staff: Report Form
+async function updateStatus(id, newStatus) {
+    const isMock = firebaseConfig.projectId === "your-project-id";
+    if (!isMock) {
+        await db.collection(COLL_BOOKINGS).doc(id).update({ status: newStatus });
+    } else {
+        const idx = allBookings.findIndex(b => b.id === id);
+        if (idx !== -1) {
+            allBookings[idx].status = newStatus;
+            localStorage.setItem('tiktok_bookings_v3', JSON.stringify(allBookings));
+            updateUI();
+        }
+    }
+    showToast(`Booking ${newStatus}`, "success");
+}
+
+async function updateStats(id, viewers, sales) {
+    const isMock = firebaseConfig.projectId === "your-project-id";
+    if (!isMock) {
+        await db.collection(COLL_BOOKINGS).doc(id).update({ actualViewers: viewers, salesAmount: sales });
+    } else {
+        const idx = allBookings.findIndex(b => b.id === id);
+        if (idx !== -1) {
+            allBookings[idx].actualViewers = viewers;
+            allBookings[idx].salesAmount = sales;
+            localStorage.setItem('tiktok_bookings_v3', JSON.stringify(allBookings));
+            updateUI();
+        }
+    }
+    showToast("Stats updated", "success");
+}
+
 document.getElementById('reportForm').addEventListener('submit', (e) => {
     e.preventDefault();
-    const id = document.getElementById('reportBookingId').value;
-    const viewers = document.getElementById('actualViewers').value;
-    const sales = document.getElementById('salesAmount').value;
-
-    updateBookingStats(id, viewers, sales);
+    updateStats(
+        document.getElementById('reportBookingId').value,
+        document.getElementById('actualViewers').value,
+        document.getElementById('salesAmount').value
+    );
     closeReportModal();
-    e.target.reset();
 });
 
-// Render Loop
+// --- UI HELPERS ---
+function switchView(view) {
+    document.querySelectorAll('.view-section').forEach(el => {
+        el.style.display = 'none';
+        el.classList.remove('active');
+    });
+
+    const target = document.getElementById(`${view}-view`);
+    if (target) {
+        target.style.display = 'block';
+        setTimeout(() => target.classList.add('active'), 10);
+    }
+
+    // Sidebar Active State
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    // Simple check to highlight based on onclick attr match
+    // (In robust app, use dataset)
+
+    if (view === 'manager') updateChart();
+}
+
 function updateUI() {
-    renderStaffBookings();
-    renderManagerDashboard();
+    if (!currentUser) return;
+
+    if (currentUser.role === 'staff') {
+        renderStaffBookings();
+    } else {
+        renderManagerDashboard();
+        renderTeamList();
+    }
 }
 
 function renderStaffBookings() {
     const list = document.getElementById('staffBookingsList');
     list.innerHTML = '';
 
-    // In real app, filter by User ID. Here we assume all mocks are ours + filter
-    const myBookings = allBookings.filter(b => b.staffName === 'Staff Member');
-    myBookings.sort((a, b) => new Date(b.date + ' ' + b.time) - new Date(a.date + ' ' + a.time));
+    // Filter by own ID if possible, else name (fallback)
+    const myBookings = allBookings.filter(b => b.staffId === currentUser.id || b.staffName === currentUser.name);
+    myBookings.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    if (myBookings.length === 0) {
-        list.innerHTML = '<div class="empty-state"><p>No bookings found.</p></div>';
-        return;
-    }
+    if (myBookings.length === 0) list.innerHTML = '<div class="empty-state"><p>No bookings.</p></div>';
 
     myBookings.forEach(b => {
-        const item = document.createElement('div');
-        item.className = 'booking-item';
-
-        let actionItem = '';
-        if (b.status === 'APPROVED') {
-            if (b.actualViewers !== null) {
-                // Already reported
-                actionItem = `<span class="item-details"><i class="ri-bar-chart-line"></i> $${b.salesAmount} | 👁️ ${b.actualViewers}</span>`;
-            } else {
-                // Pending Report
-                actionItem = `<button class="btn-sm btn-report" onclick="openReportModal('${b.id}')"><i class="ri-edit-line"></i> Updates Stats</button>`;
-            }
-        }
-
-        item.innerHTML = `
+        const div = document.createElement('div');
+        div.className = 'booking-item';
+        div.innerHTML = `
             <div class="item-header">
                 <span class="item-title">${b.title}</span>
                 <span class="item-status status-${b.status.toLowerCase()}">${b.status}</span>
             </div>
             <div class="item-details">
-                <span><i class="ri-calendar-line"></i> ${formatDate(b.date)}</span>
+                <span><i class="ri-map-pin-line"></i> ${b.room}</span>
+                <span><i class="ri-calendar-line"></i> ${b.date}</span>
                 <span><i class="ri-time-line"></i> ${b.time}</span>
             </div>
             <div class="item-actions">
-                ${actionItem}
+               ${b.status === 'APPROVED' ? `<button class="btn-sm btn-report" onclick="openReportModal('${b.id}')">Report</button>` : ''}
             </div>
         `;
-        list.appendChild(item);
+        list.appendChild(div);
     });
 }
 
 function renderManagerDashboard() {
-    // Stats
+    // Stats ... same as before
+    const approved = allBookings.filter(b => b.status === 'APPROVED');
+    document.getElementById('statApproved').textContent = approved.length;
     document.getElementById('statPending').textContent = allBookings.filter(b => b.status === 'PENDING').length;
-    document.getElementById('statApproved').textContent = allBookings.filter(b => b.status === 'APPROVED').length;
+    document.getElementById('statSales').textContent = '$' + allBookings.reduce((acc, b) => acc + (Number(b.salesAmount) || 0), 0);
 
-    const totalSales = allBookings.reduce((sum, b) => sum + (Number(b.salesAmount) || 0), 0);
-    document.getElementById('statSales').textContent = '$' + totalSales.toLocaleString();
-
-    // Pending List
+    // Pending
     const pendingList = document.getElementById('pendingRequestsList');
     pendingList.innerHTML = '';
     const pending = allBookings.filter(b => b.status === 'PENDING');
+    if (pending.length === 0) pendingList.innerHTML = '<div class="empty-state">No pending</div>';
 
-    if (pending.length === 0) {
-        pendingList.innerHTML = '<div class="empty-state"><p>No pending requests.</p></div>';
-    } else {
-        pending.forEach(b => {
-            const item = document.createElement('div');
-            item.className = 'booking-item';
-            item.innerHTML = `
-                <div class="item-header">
-                    <span class="item-title">${b.title} <small style="color:var(--text-muted)">by ${b.staffName}</small></span>
-                </div>
-                <div class="item-details">
-                    <span><i class="ri-calendar-line"></i> ${formatDate(b.date)}</span>
-                    <span><i class="ri-time-line"></i> ${b.time}</span>
-                </div>
-                <div class="item-actions">
-                    <button class="btn-sm btn-approve" onclick="updateBookingStatus('${b.id}', 'APPROVED')">Approve</button>
-                    <button class="btn-sm btn-reject" onclick="updateBookingStatus('${b.id}', 'REJECTED')">Reject</button>
-                </div>
-            `;
-            pendingList.appendChild(item);
-        });
-    }
-
-    // Approved List
-    const calendarList = document.getElementById('approvedCalendarList');
-    calendarList.innerHTML = '';
-    const approved = allBookings.filter(b => b.status === 'APPROVED')
-        .sort((a, b) => new Date(a.date + ' ' + a.time) - new Date(b.date + ' ' + b.time));
-
-    if (approved.length === 0) {
-        calendarList.innerHTML = '<div class="empty-state"><p>No approved sessions.</p></div>';
-    } else {
-        approved.forEach(b => {
-            const item = document.createElement('div');
-            item.className = 'booking-item';
-            item.style.borderLeft = '3px solid var(--success)';
-
-            let stats = '';
-            if (b.actualViewers !== null) {
-                stats = `<div style="margin-top:0.5rem; font-size:0.8rem; color:var(--text-muted)">
-                    Results: ${b.actualViewers} viewers, $${b.salesAmount} sales
-                </div>`;
-            }
-
-            item.innerHTML = `
-                <div class="item-header">
-                    <span class="item-title">${b.title}</span>
-                    <small>${b.staffName}</small>
-                </div>
-                <div class="item-details">
-                    <span>${formatDate(b.date)}</span>
-                    <span>${b.time}</span>
-                </div>
-                ${stats}
-            `;
-            calendarList.appendChild(item);
-        });
-    }
-
-    updateChart();
-}
-
-// --- CHART.JS INTEGRATION ---
-function updateChart() {
-    const ctx = document.getElementById('salesChart');
-    if (!ctx) return;
-
-    // Aggregate sales by date (last 7 days logic simplified for demo)
-    // We will just group by Date string for all available data to show something nice
-    const salesByDate = {};
-
-    // Sort bookings by date
-    const sorted = [...allBookings].sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    sorted.forEach(b => {
-        if (b.status === 'APPROVED' && b.salesAmount) {
-            const d = formatDate(b.date);
-            salesByDate[d] = (salesByDate[d] || 0) + Number(b.salesAmount);
-        }
+    pending.forEach(b => {
+        const div = document.createElement('div');
+        div.className = 'booking-item';
+        div.innerHTML = `
+            <div class="item-header"><span class="item-title">${b.title}</span></div>
+             <div class="item-details">
+                <span>${b.staffName}</span>
+                <span>${b.room}</span>
+                <span>${b.date} @ ${b.time}</span>
+            </div>
+            <div class="item-actions">
+                <button class="btn-sm btn-approve" onclick="updateStatus('${b.id}', 'APPROVED')">Approve</button>
+                <button class="btn-sm btn-reject" onclick="updateStatus('${b.id}', 'REJECTED')">Reject</button>
+            </div>
+        `;
+        pendingList.appendChild(div);
     });
 
-    const labels = Object.keys(salesByDate);
-    const data = Object.values(salesByDate);
+    // Calendar logic ...
+    const calList = document.getElementById('approvedCalendarList');
+    calList.innerHTML = '';
+    if (approved.length === 0) calList.innerHTML = '<div class="empty-state">No sessions</div>';
+    approved.forEach(b => {
+        const div = document.createElement('div');
+        div.className = 'booking-item';
+        div.style.borderLeft = '3px solid var(--success)';
+        div.innerHTML = `
+            <div class="item-header"><span class="item-title">${b.title}</span></div>
+            <div class="item-details">
+                <span>${b.room}</span>
+                <span>${b.date} ${b.time}</span>
+            </div>
+        `;
+        calList.appendChild(div);
+    });
+}
 
-    // Initial Chart Data (if empty)
-    if (labels.length === 0) {
-        // Show empty placeholder or just leave empty
-    }
+function renderTeamList() {
+    const list = document.getElementById('teamList');
+    list.innerHTML = '';
+    allUsers.forEach(u => {
+        const div = document.createElement('div');
+        div.className = 'booking-item';
+        div.innerHTML = `
+            <div class="item-header">
+                <span class="item-title">${u.name}</span>
+                <span style="font-size:0.8rem; opacity:0.7">@${u.username}</span>
+            </div>
+            <div class="item-details">
+                <span class="item-status" style="background:rgba(255,255,255,0.1)">${u.role}</span>
+                 <span><i class="ri-key-line"></i> ${u.password}</span>
+            </div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+// Chart ...
+function updateChart() {
+    const ctx = document.getElementById('salesChart');
+    if (!ctx || !Chart) return;
+
+    // Simple Aggregation
+    const salesByDate = {};
+    allBookings.filter(b => b.status === 'APPROVED' && b.salesAmount).forEach(b => {
+        salesByDate[b.date] = (salesByDate[b.date] || 0) + Number(b.salesAmount);
+    });
 
     if (salesChartInstance) {
-        salesChartInstance.data.labels = labels;
-        salesChartInstance.data.datasets[0].data = data;
+        salesChartInstance.data.labels = Object.keys(salesByDate);
+        salesChartInstance.data.datasets[0].data = Object.values(salesByDate);
         salesChartInstance.update();
     } else {
         salesChartInstance = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels,
+                labels: Object.keys(salesByDate),
                 datasets: [{
-                    label: 'Sales ($)',
-                    data: data,
+                    label: 'Sales',
+                    data: Object.values(salesByDate),
                     borderColor: '#8b5cf6',
-                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                    tension: 0.4,
-                    fill: true,
-                    pointBackgroundColor: '#ec4899'
+                    tension: 0.4
                 }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { labels: { color: '#94a3b8' } }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: { color: 'rgba(148, 163, 184, 0.1)' },
-                        ticks: { color: '#94a3b8' }
-                    },
-                    x: {
-                        grid: { color: 'rgba(148, 163, 184, 0.1)' },
-                        ticks: { color: '#94a3b8' }
-                    }
-                }
             }
         });
     }
 }
 
-// Modal Helpers
-function openReportModal(id) {
+
+function showToast(msg, type = 'info') {
+    if (typeof Toastify === 'undefined') { alert(msg); return; }
+    let bg = "#3b82f6";
+    if (type === 'success') bg = "#10b981";
+    if (type === 'error') bg = "#ef4444";
+    Toastify({ text: msg, backgroundColor: bg, duration: 2000 }).showToast();
+}
+
+function formatDate(d) { return d; } // Simplified for now
+
+// Globals
+window.openReportModal = (id) => {
     document.getElementById('reportBookingId').value = id;
     document.getElementById('reportModal').classList.remove('hidden');
-}
-
-function closeReportModal() {
-    document.getElementById('reportModal').classList.add('hidden');
-}
-
-// Startup
-document.addEventListener('DOMContentLoaded', initRealtimeListener);
-window.openReportModal = openReportModal;
-window.closeReportModal = closeReportModal;
+};
+window.closeReportModal = () => document.getElementById('reportModal').classList.add('hidden');
+window.logout = logout;
 window.switchView = switchView;
-window.updateBookingStatus = updateBookingStatus;
+window.updateStatus = updateStatus;
+
+// Start
+initData();

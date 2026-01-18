@@ -15,31 +15,50 @@
 </head>
 
 <body>
-    <div class="app-container">
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="login-container">
+        <div class="login-box">
+            <div class="logo-large">
+                <i class="ri-live-line"></i>
+                <span>LiveBook</span>
+            </div>
+            <h2>Welcome Back</h2>
+            <p>Sign in to access the booking portal</p>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="loginUsername" placeholder="Enter username" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" placeholder="Enter password" required>
+                </div>
+                <button type="submit" class="btn-primary">Sign In</button>
+            </form>
+            <p class="login-footer">Default Admin: <strong>admin</strong> / <strong>admin123</strong></p>
+        </div>
+    </div>
+
+    <!-- MAIN APP (Hidden until login) -->
+    <div id="app-main" class="app-container" style="display: none;">
         <aside class="sidebar">
             <div class="logo">
                 <i class="ri-live-line"></i>
                 <span>LiveBook</span>
             </div>
 
-            <nav class="nav-menu">
-                <div class="nav-label">Portals</div>
-                <button class="nav-item active" data-view="staff" onclick="switchView('staff')">
-                    <i class="ri-user-smile-line"></i>
-                    <span>Staff Portal</span>
-                </button>
-                <button class="nav-item" data-view="manager" onclick="switchView('manager')">
-                    <i class="ri-shield-check-line"></i>
-                    <span>Manager Portal</span>
-                </button>
+            <nav class="nav-menu" id="navMenu">
+                <!-- Populated by JS based on Role -->
             </nav>
 
             <div class="user-profile">
-                <div class="avatar">S</div>
+                <div class="avatar" id="currentUserAvatar">U</div>
                 <div class="user-info">
-                    <p class="name">Staff Member</p>
-                    <p class="role">Online</p>
+                    <p class="name" id="currentUserName">User</p>
+                    <p class="role" id="currentUserRole">Role</p>
                 </div>
+                <button onclick="logout()" class="btn-logout" title="Logout"><i
+                        class="ri-logout-box-r-line"></i></button>
             </div>
         </aside>
 
@@ -55,6 +74,15 @@
                     <div class="card booking-form-card">
                         <h2>New Booking</h2>
                         <form id="bookingForm">
+                            <div class="form-group">
+                                <label>Studio Room</label>
+                                <select id="bookingRoom" required>
+                                    <option value="Main Studio">Main Studio (Standard)</option>
+                                    <option value="Gaming Room">Gaming Room (RGB Setup)</option>
+                                    <option value="Lounge">Just Chatting Lounge</option>
+                                    <option value="Green Screen">Green Screen Studio</option>
+                                </select>
+                            </div>
                             <div class="form-group">
                                 <label>Date</label>
                                 <input type="date" id="bookingDate" required>
@@ -147,6 +175,52 @@
                     <div class="card calendar-card">
                         <h2>Approved Schedule</h2>
                         <div class="calendar-list" id="approvedCalendarList">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TEAM MANAGEMENT VIEW (New for v3) -->
+            <section id="team-view" class="view-section" style="display: none;">
+                <header class="section-header">
+                    <h1>Team Management</h1>
+                    <p>Manage staff members and access.</p>
+                </header>
+
+                <div class="content-grid">
+                    <div class="card booking-form-card"> <!-- Reuse form card style -->
+                        <h2>Add New Member</h2>
+                        <form id="addUserForm">
+                            <div class="form-group">
+                                <label>Full Name</label>
+                                <input type="text" id="newUserName" placeholder="e.g. John Doe" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Username (Login)</label>
+                                <input type="text" id="newUserUsername" placeholder="e.g. john.d" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Password</label>
+                                <input type="password" id="newUserPassword" placeholder="******" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Role</label>
+                                <select id="newUserRole">
+                                    <option value="staff">Staff Member</option>
+                                    <option value="manager">Manager</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn-primary">
+                                <i class="ri-user-add-line"></i>
+                                Create Account
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h2>Team Members</h2>
+                        <div class="bookings-list" id="teamList">
                             <!-- Populated by JS -->
                         </div>
                     </div>
