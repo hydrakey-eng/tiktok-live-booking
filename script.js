@@ -87,6 +87,8 @@ document.getElementById('loginForm').addEventListener('submit', (e) => {
         if (user.role === 'manager') switchView('manager');
         else switchView('staff');
 
+        updateUI(); // Refresh data for the logged in user
+
         showToast(`Welcome, ${user.name}!`, "success");
     } else {
         showToast("Invalid Credentials", "error");
@@ -327,11 +329,15 @@ function renderManagerDashboard() {
         const div = document.createElement('div');
         div.className = 'booking-item';
         div.innerHTML = `
-            <div class="item-header"><span class="item-title">${b.title}</span></div>
+            <div class="item-header">
+                <span class="item-title">${b.title}</span>
+                <span style="font-size: 0.9em; color: var(--accent); font-weight: 600;">
+                    <i class="ri-user-line"></i> ${b.staffName}
+                </span>
+            </div>
              <div class="item-details">
-                <span>${b.staffName}</span>
-                <span>${b.room}</span>
-                <span>${b.date} @ ${b.time}</span>
+                <span><i class="ri-map-pin-line"></i> ${b.room}</span>
+                <span><i class="ri-calendar-line"></i> ${b.date} @ ${b.time}</span>
             </div>
             <div class="item-actions">
                 <button class="btn-sm btn-approve" onclick="updateStatus('${b.id}', 'APPROVED')">Approve</button>
