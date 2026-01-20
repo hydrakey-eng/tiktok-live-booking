@@ -190,7 +190,12 @@ function renderCalendar() {
         // Visual Indicators for Bookings
         const bookingsOnDate = allBookings.filter(b => b.date === dateStr && b.room === selectedRoom && b.status !== 'REJECTED');
         if (bookingsOnDate.length > 0) {
-            div.classList.add('has-booking');
+            const hasPending = bookingsOnDate.some(b => b.status === 'PENDING');
+            const hasApproved = bookingsOnDate.some(b => b.status === 'APPROVED');
+
+            if (hasPending) div.classList.add('has-pending');
+            if (hasApproved) div.classList.add('has-approved');
+
             // If all 6 slots are taken, mark as fully booked
             if (bookingsOnDate.length >= 6) {
                 div.classList.add('fully-booked');
@@ -400,16 +405,16 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
     const time = document.getElementById('bookingTime').value;
     const title = document.getElementById('bookingTitle').value;
 
-    // Overlap Check: Date + Time + Room
+    // Overlap Check: Date + Time + Room (Block strictly on APPROVED)
     const isOverlap = allBookings.some(b =>
         b.date === date &&
         b.time === time &&
         b.room === room &&
-        b.status !== 'REJECTED'
+        b.status === 'APPROVED'
     );
 
     if (isOverlap) {
-        showToast(`'${room}' is already booked at this time!`, 'error');
+        showToast(`'${room}' is already booked and APPROVED at this time!`, 'error');
         return;
     }
 
@@ -423,6 +428,7 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
         status: 'PENDING',
         actualViewers: null,
         salesAmount: null,
+        duration: null,
         createdAt: new Date().toISOString()
     };
 
@@ -458,15 +464,22 @@ async function updateStatus(id, newStatus) {
     showToast(`Booking ${newStatus}`, "success");
 }
 
-async function updateStats(id, viewers, sales) {
+async function updateStats(id, viewers, sales, duration) {
     const isMock = firebaseConfig.projectId === "your-project-id";
+    const data = {
+        actualViewers: Number(viewers),
+        salesAmount: Number(sales),
+        duration: Number(duration)
+    };
+
     if (!isMock) {
-        await db.collection(COLL_BOOKINGS).doc(id).update({ actualViewers: viewers, salesAmount: sales });
+        await db.collection(COLL_BOOKINGS).doc(id).update(data);
     } else {
         const idx = allBookings.findIndex(b => b.id === id);
         if (idx !== -1) {
-            allBookings[idx].actualViewers = viewers;
-            allBookings[idx].salesAmount = sales;
+            allBookings[idx].actualViewers = data.actualViewers;
+            allBookings[idx].salesAmount = data.salesAmount;
+            allBookings[idx].duration = data.duration;
             localStorage.setItem('tiktok_bookings_v3', JSON.stringify(allBookings));
             updateUI();
         }
@@ -479,7 +492,8 @@ document.getElementById('reportForm').addEventListener('submit', (e) => {
     updateStats(
         document.getElementById('reportBookingId').value,
         document.getElementById('actualViewers').value,
-        document.getElementById('salesAmount').value
+        document.getElementById('salesAmount').value,
+        document.getElementById('reportDuration').value
     );
     closeReportModal();
 });
@@ -582,6 +596,8 @@ function renderManagerDashboard() {
         pendingList.appendChild(div);
     });
 
+    renderEmployeeSummary();
+
     // Calendar logic ...
     const calList = document.getElementById('approvedCalendarList');
     calList.innerHTML = '';
@@ -619,6 +635,63 @@ function renderTeamList() {
         `;
         list.appendChild(div);
     });
+}
+
+function renderEmployeeSummary() {
+    const container = document.getElementById('employeeSummaryList');
+    if (!container) return;
+
+    // Current Month Filter
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const monthlyBookings = allBookings.filter(b => {
+        const bDate = new Date(b.date);
+        return b.status === 'APPROVED' &&
+            bDate.getMonth() === currentMonth &&
+            bDate.getFullYear() === currentYear;
+    });
+
+    // Aggregate by Employee
+    const summary = {};
+    monthlyBookings.forEach(b => {
+        if (!summary[b.staffName]) {
+            summary[b.staffName] = { hours: 0, sales: 0 };
+        }
+        summary[b.staffName].hours += (Number(b.duration) || 0);
+        summary[b.staffName].sales += (Number(b.salesAmount) || 0);
+    });
+
+    if (Object.keys(summary).length === 0) {
+        container.innerHTML = '<div class="empty-state">No data for this month</div>';
+        return;
+    }
+
+    let html = `
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Hours Lived</th>
+                    <th>Total Sales</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    for (const name in summary) {
+        html += `
+            <tr>
+                <td><strong>${name}</strong></td>
+                <td><span class="summary-val">${summary[name].hours.toFixed(1)}h</span></td>
+                <td><span class="summary-val">$${summary[name].sales.toFixed(2)}</span></td>
+            </tr>
+        `;
+    }
+
+    html += `</tbody></table>`;
+    container.innerHTML = html;
 }
 
 // Chart ...

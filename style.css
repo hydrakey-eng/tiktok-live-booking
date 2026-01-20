@@ -616,15 +616,33 @@ body {
 }
 
 /* Availability Indicators */
-.calendar-day.has-booking::after {
+.calendar-day.has-pending::after {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    width: 4px;
+    height: 4px;
+    background-color: var(--warning);
+    border-radius: 50%;
+}
+
+.calendar-day.has-approved::after {
     content: '';
     position: absolute;
     bottom: 4px;
     width: 4px;
     height: 4px;
     background-color: var(--success);
-    /* Green dot for approved bookings? Or maybe warning */
     border-radius: 50%;
+}
+
+/* If both, show two dots or a split? Let's show two dots */
+.calendar-day.has-pending.has-approved::after {
+    content: '';
+    width: 10px;
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(to right, var(--warning) 50%, var(--success) 50%);
 }
 
 .calendar-day.fully-booked {
@@ -668,6 +686,36 @@ body {
     background: rgba(0, 0, 0, 0.2);
     border-color: transparent;
     text-decoration: line-through;
+}
+
+/* Employee Summary Dashboard */
+.summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+}
+
+.summary-table th,
+.summary-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.summary-table th {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.summary-table td {
+    font-size: 0.9rem;
+}
+
+.summary-val {
+    font-weight: 700;
+    color: var(--primary);
 }
 
 @media (max-width: 480px) {
