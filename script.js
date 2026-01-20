@@ -20,6 +20,49 @@ const db = firebase.firestore();
 const COLL_BOOKINGS = 'bookings';
 const COLL_USERS = 'users'; // New collection for users
 
+// --- LINE NOTIFICATION CONFIG ---
+const LINE_NOTIFY_TOKEN = 'YOUR_LINE_TOKEN_HERE'; // TODO: Replace with real token
+const LINE_API_URL = 'https://notify-api.line.me/api/notify';
+const CORS_PROXY = 'https://cors-anywhere.herokuapp.com/';
+
+async function sendLineNotification(booking) {
+    if (LINE_NOTIFY_TOKEN === 'YOUR_LINE_TOKEN_HERE') {
+        console.warn('LINE Notification skipped: No token provided.');
+        return;
+    }
+
+    const message = `
+New Booking Request!
+Title: ${booking.title}
+Room: ${booking.room}
+Date: ${booking.date}
+Time: ${booking.time}
+By: ${booking.staffName}
+    `.trim();
+
+    try {
+        const formData = new URLSearchParams();
+        formData.append('message', message);
+
+        const response = await fetch(CORS_PROXY + LINE_API_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${LINE_NOTIFY_TOKEN}`,
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        console.log('LINE Notification sent successfully');
+    } catch (error) {
+        console.error('Failed to send LINE notification:', error);
+        // Don't block the UI for this
+    }
+}
+
 // --- STATE MANAGEMENT ---
 let allBookings = [];
 let allUsers = [];
@@ -27,6 +70,12 @@ let salesChartInstance = null;
 let currentUser = null; // { username, role, name, id }
 
 // --- AUTH UTILS ---
+// --- CALENDAR STATE ---
+let currentCalendarDate = new Date();
+let selectedDateStr = '';
+let selectedTimeStr = '';
+
+// --- INITIALIZATION ---
 function initData() {
     // Check Config
     const isMock = firebaseConfig.projectId === "your-project-id";
@@ -36,10 +85,10 @@ function initData() {
         db.collection(COLL_BOOKINGS).onSnapshot(snap => {
             allBookings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             updateUI();
+            renderCalendar(); // Refresh calendar highlights
         });
         db.collection(COLL_USERS).onSnapshot(snap => {
             allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            // If current user is deleted, logout? (Skip for now)
             updateUI();
         });
     } else {
@@ -51,7 +100,7 @@ function initData() {
         if (allUsers.length === 0) {
             allUsers.push({
                 username: 'admin',
-                password: 'admin123', // In real app, hash this!
+                password: 'admin123',
                 role: 'manager',
                 name: 'Admin User',
                 id: 'admin_1'
@@ -59,8 +108,191 @@ function initData() {
             localStorage.setItem('tiktok_users_v3', JSON.stringify(allUsers));
         }
         updateUI();
+        renderCalendar();
+    }
+
+    // Bind Export Button
+    const exportBtn = document.getElementById('exportExcelBtn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', exportToExcel);
+    }
+
+    // Bind Calendar Nav
+    document.getElementById('prevMonthBtn').addEventListener('click', () => {
+        currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
+        renderCalendar();
+    });
+    document.getElementById('nextMonthBtn').addEventListener('click', () => {
+        currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
+        renderCalendar();
+    });
+
+    // Bind Room Change
+    const roomSelect = document.getElementById('bookingRoom');
+    if (roomSelect) {
+        roomSelect.addEventListener('change', () => {
+            renderCalendar();
+            // Reset selection if room changes
+            selectedDateStr = '';
+            selectedTimeStr = '';
+            document.getElementById('bookingDate').value = '';
+            document.getElementById('bookingTime').value = '';
+            document.getElementById('timeSlotGroup').style.display = 'none';
+        });
     }
 }
+
+// --- CALENDAR LOGIC ---
+function renderCalendar() {
+    const grid = document.getElementById('calendarDays');
+    const label = document.getElementById('currentMonthLabel');
+    if (!grid || !label) return;
+
+    grid.innerHTML = '';
+
+    // Add Day Names
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    dayNames.forEach(d => {
+        const div = document.createElement('div');
+        div.className = 'calendar-day-name';
+        div.textContent = d;
+        grid.appendChild(div);
+    });
+
+    const year = currentCalendarDate.getFullYear();
+    const month = currentCalendarDate.getMonth();
+
+    label.textContent = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(currentCalendarDate);
+
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    // Padding for first day
+    for (let i = 0; i < firstDay; i++) {
+        const div = document.createElement('div');
+        div.className = 'calendar-day empty';
+        grid.appendChild(div);
+    }
+
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const selectedRoom = document.getElementById('bookingRoom').value;
+
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const div = document.createElement('div');
+        div.className = 'calendar-day';
+        div.textContent = day;
+
+        if (dateStr === todayStr) div.classList.add('today');
+        if (dateStr === selectedDateStr) div.classList.add('selected');
+
+        // Visual Indicators for Bookings
+        const bookingsOnDate = allBookings.filter(b => b.date === dateStr && b.room === selectedRoom && b.status !== 'REJECTED');
+        if (bookingsOnDate.length > 0) {
+            div.classList.add('has-booking');
+            // If all 6 slots are taken, mark as fully booked
+            if (bookingsOnDate.length >= 6) {
+                div.classList.add('fully-booked');
+            }
+        }
+
+        div.onclick = () => handleDateClick(dateStr);
+        grid.appendChild(div);
+    }
+}
+
+function handleDateClick(dateStr) {
+    selectedDateStr = dateStr;
+    document.getElementById('bookingDate').value = dateStr;
+
+    // Reset Time Selection
+    selectedTimeStr = '';
+    document.getElementById('bookingTime').value = '';
+
+    renderCalendar(); // Re-render to show selection
+    renderTimeSlots(dateStr);
+}
+
+function renderTimeSlots(dateStr) {
+    const container = document.getElementById('time-slots-container');
+    const group = document.getElementById('timeSlotGroup');
+    if (!container) return;
+
+    group.style.display = 'block';
+    container.innerHTML = '';
+
+    const slots = [
+        "09:00", "11:00", "13:00", "15:00", "17:00", "19:00"
+    ];
+
+    const selectedRoom = document.getElementById('bookingRoom').value;
+    const bookingsOnDate = allBookings.filter(b => b.date === dateStr && b.room === selectedRoom && b.status !== 'REJECTED');
+
+    slots.forEach(slot => {
+        const btn = document.createElement('div');
+        btn.className = 'time-slot-chip';
+
+        const booking = bookingsOnDate.find(b => b.time === slot);
+        if (booking) {
+            btn.classList.add('disabled');
+            btn.textContent = `${slot} (Booked: ${booking.staffName})`;
+        } else {
+            btn.textContent = slot;
+            btn.onclick = () => {
+                document.querySelectorAll('.time-slot-chip').forEach(el => el.classList.remove('selected'));
+                btn.classList.add('selected');
+                selectedTimeStr = slot;
+                document.getElementById('bookingTime').value = slot;
+            };
+        }
+
+        if (selectedTimeStr === slot) btn.classList.add('selected');
+
+        container.appendChild(btn);
+    });
+}
+
+// EXPORT TO EXCEL
+function exportToExcel() {
+    if (!currentUser || currentUser.role !== 'manager') {
+        showToast("Unauthorized", "error");
+        return;
+    }
+
+    if (allBookings.length === 0) {
+        showToast("No data to export", "info");
+        return;
+    }
+
+    // 1. Format Data for Export
+    const dataToExport = allBookings.map(b => ({
+        "ID": b.id,
+        "Title": b.title,
+        "Staff Name": b.staffName,
+        "Room": b.room,
+        "Date": b.date,
+        "Time": b.time,
+        "Status": b.status,
+        "Created At": b.createdAt,
+        "Actual Viewers": b.actualViewers || 0,
+        "Sales Amount": b.salesAmount || 0
+    }));
+
+    // 2. Create Worksheet
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+
+    // 3. Create Workbook
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Bookings");
+
+    // 4. Generate File and Download
+    const fileName = `tiktok_bookings_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+
+    showToast("Exporting data...", "success");
+}
+
 
 // LOGIN
 document.getElementById('loginForm').addEventListener('submit', (e) => {
@@ -206,6 +438,9 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
 
     e.target.reset();
     showToast("Booking requested!", "success");
+
+    // Send Notification
+    await sendLineNotification(newBooking);
 });
 
 async function updateStatus(id, newStatus) {

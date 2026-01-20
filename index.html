@@ -83,21 +83,32 @@
                                     <option value="Green Screen">Green Screen Studio</option>
                                 </select>
                             </div>
+                            <!-- CALENDAR COMPONENT -->
                             <div class="form-group">
-                                <label>Date</label>
-                                <input type="date" id="bookingDate" required>
+                                <label>Select Date</label>
+                                <div id="calendar-component" class="calendar-wrapper">
+                                    <!-- Calendar Header -->
+                                    <div class="calendar-header">
+                                        <button type="button" id="prevMonthBtn"><i
+                                                class="ri-arrow-left-s-line"></i></button>
+                                        <span id="currentMonthLabel">Month Year</span>
+                                        <button type="button" id="nextMonthBtn"><i
+                                                class="ri-arrow-right-s-line"></i></button>
+                                    </div>
+                                    <!-- Days Grid -->
+                                    <div class="calendar-grid" id="calendarDays">
+                                        <!-- JS will populate this -->
+                                    </div>
+                                </div>
+                                <input type="hidden" id="bookingDate" required>
                             </div>
-                            <div class="form-group">
-                                <label>Time Slot</label>
-                                <select id="bookingTime" required>
-                                    <option value="">Select a time</option>
-                                    <option value="09:00">09:00 - 11:00</option>
-                                    <option value="11:00">11:00 - 13:00</option>
-                                    <option value="13:00">13:00 - 15:00</option>
-                                    <option value="15:00">15:00 - 17:00</option>
-                                    <option value="17:00">17:00 - 19:00</option>
-                                    <option value="19:00">19:00 - 21:00</option>
-                                </select>
+
+                            <div class="form-group" id="timeSlotGroup" style="display:none;">
+                                <label>Available Time Slots</label>
+                                <div id="time-slots-container" class="time-slot-chips">
+                                    <!-- JS will populate this -->
+                                </div>
+                                <input type="hidden" id="bookingTime" required>
                             </div>
                             <div class="form-group">
                                 <label>Stream Title / Topic</label>
@@ -127,6 +138,10 @@
                 <header class="section-header">
                     <h1>Manager Dashboard</h1>
                     <p>Review requests and monitor schedule.</p>
+                    <button id="exportExcelBtn" class="btn-primary"
+                        style="margin-top: 10px; background-color: #10b981;">
+                        <i class="ri-file-excel-2-line"></i> Export Data
+                    </button>
                 </header>
 
                 <div class="dashboard-stats">
@@ -252,6 +267,8 @@
     <!-- LIBRARIES -->
     <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS for Excel Export -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <!-- Firebase SDK (Version 9+ Modular) -->
     <!-- Using Compat version for simpler simple script tag usage without bundler complexity if preferred, 
          but here we use the specific modular imports via ES modules in script.js OR unified compat for ease -->
